@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { DM_Sans, Space_Grotesk } from "next/font/google";
 
 const dmSans = DM_Sans({
@@ -17,7 +18,7 @@ export default function Home() {
     <div
       className={`${dmSans.className} ${spaceGrotesk.variable} min-h-screen bg-[radial-gradient(circle_at_top,_#f2ecff_0%,_#f7f2ff_35%,_#fef8f3_70%,_#ffffff_100%)] text-slate-900`}
     >
-      <div className="relative mx-auto flex min-h-screen max-w-6xl gap-6 px-6 py-8 lg:px-8">
+      <div className="relative flex min-h-screen w-full gap-6 px-6 py-8 lg:px-10">
         <aside className="hidden w-60 flex-col gap-6 rounded-[28px] bg-white/80 p-6 shadow-[0_18px_60px_-30px_rgba(40,26,90,0.35)] backdrop-blur lg:flex">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-400 via-orange-300 to-amber-200 text-white shadow-md">
@@ -31,30 +32,31 @@ export default function Home() {
 
           <nav className="flex flex-col gap-2 text-sm font-medium text-slate-600">
             {[
-              "Dashboard",
-              "Students",
-              "Learning Paths",
-              "Assessments",
-              "Live Sessions",
-              "Attendance",
-              "Content Hub",
-              "Reports",
+              { label: "Dashboard", href: "/" },
+              { label: "Students", href: "/" },
+              { label: "Progress Tracking", href: "/progTrack" },
+              { label: "Assessments", href: "/" },
+              { label: "Live Sessions", href: "/" },
+              { label: "Attendance", href: "/" },
+              { label: "Content Hub", href: "/content" },
+              { label: "Reports", href: "/" },
             ].map((item, index) => (
-              <button
-                key={item}
+              <Link
+                key={item.label}
+                href={item.href}
                 className={`flex items-center justify-between rounded-2xl px-4 py-3 transition ${
                   index === 0
                     ? "bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-400 text-white shadow-md"
                     : "hover:bg-white/60"
                 }`}
               >
-                <span>{item}</span>
+                <span>{item.label}</span>
                 {index === 0 ? (
                   <span className="rounded-full bg-white/20 px-2 py-1 text-[10px] uppercase tracking-wide">
                     Live
                   </span>
                 ) : null}
-              </button>
+              </Link>
             ))}
           </nav>
 
