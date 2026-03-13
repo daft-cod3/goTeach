@@ -1,4 +1,7 @@
+﻿"use client";
+
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { DM_Sans, Space_Grotesk } from "next/font/google";
 
 const dmSans = DM_Sans({
@@ -14,6 +17,247 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export default function Home() {
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [isLiveOpen, setIsLiveOpen] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [mediaError, setMediaError] = useState("");
+  const [stream, setStream] = useState(null);
+  const [recordingUrl, setRecordingUrl] = useState("");
+  const [recordedFile, setRecordedFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
+  const videoRef = useRef(null);
+  const recorderRef = useRef(null);
+  const chunksRef = useRef([]);
+
+  const handleUploadChange = (event) => {
+    const files = Array.from(event.target.files || []);
+    setSelectedFiles(files.map((file) => file.name));
+  };
+
+  const startPreview = async () => {
+    setMediaError("");
+    if (stream) {
+      return;
+    }
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      setStream(mediaStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+    } catch (error) {
+      setMediaError(
+        "Camera or microphone access was blocked. Please allow permissions and try again."
+      );
+    }
+  };
+
+  const startRecording = async () => {
+    if (typeof MediaRecorder === "undefined") {
+      setMediaError("Recording is not supported in this browser.");
+      return;
+    }
+
+    if (!stream) {
+      await startPreview();
+    }
+    if (!stream) {
+      return;
+    }
+
+    const preferredTypes = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+    ];
+    let mimeType = "";
+    for (const type of preferredTypes) {
+      if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type)) {
+        mimeType = type;
+        break;
+      }
+    }
+
+    try {
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      chunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, {
+          type: mimeType || "video/webm",
+        });
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const fileName = `live-session-${timestamp}.webm`;
+        const file = new File([blob], fileName, {
+          type: mimeType || "video/webm",
+        });
+        const url = URL.createObjectURL(blob);
+        setRecordingUrl(url);
+        setRecordedFile(file);
+        setShareUrl("");
+        setUploadError("");
+        setIsFinalizing(false);
+      };
+      recorder.start(1000);
+      recorderRef.current = recorder;
+      setIsRecording(true);
+      setIsPaused(false);
+      setIsFinalizing(false);
+    } catch (error) {
+      setMediaError("Recording failed to start on this browser.");
+    }
+  };
+
+  const stopRecording = () => {
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      setIsFinalizing(true);
+      try {
+        if (typeof recorder.requestData === "function") {
+          recorder.requestData();
+        }
+      } catch (error) {
+        // Ignore requestData errors and proceed to stop.
+      }
+      recorder.stop();
+    }
+    setIsRecording(false);
+    setIsPaused(false);
+  };
+
+  const togglePauseRecording = () => {
+    const recorder = recorderRef.current;
+    if (!recorder) {
+      return;
+    }
+    if (recorder.state === "recording" && typeof recorder.pause === "function") {
+      recorder.pause();
+      setIsPaused(true);
+    } else if (recorder.state === "paused" && typeof recorder.resume === "function") {
+      recorder.resume();
+      setIsPaused(false);
+    }
+  };
+
+  const closeLive = () => {
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.stop();
+    }
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+    if (recordingUrl) {
+      URL.revokeObjectURL(recordingUrl);
+    }
+    setStream(null);
+    setRecordingUrl("");
+    setIsRecording(false);
+    setMediaError("");
+    setRecordedFile(null);
+    setIsUploading(false);
+    setUploadError("");
+    setShareUrl("");
+    setCopyStatus("");
+    setIsFinalizing(false);
+    setIsLiveOpen(false);
+  };
+
+  const handleUploadRecording = async () => {
+    if (!recordedFile) {
+      return;
+    }
+    setIsUploading(true);
+    setUploadError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", recordedFile);
+      const response = await fetch("/api/recordings", {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+      const data = await response.json();
+      setShareUrl(data.shareUrl || data.url || "");
+    } catch (error) {
+      setUploadError("Upload failed. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (!shareUrl) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopyStatus("Link copied.");
+    } catch (error) {
+      setCopyStatus("Could not copy link.");
+    }
+  };
+
+  const handleDeviceShare = async () => {
+    if (!navigator.share) {
+      setCopyStatus("Share is not supported on this device.");
+      return;
+    }
+    const title = "Live session recording";
+    const text = "Live session recording from GoDomain Teacher.";
+    try {
+      if (shareUrl) {
+        await navigator.share({ title, text, url: shareUrl });
+        return;
+      }
+      if (recordedFile && navigator.canShare?.({ files: [recordedFile] })) {
+        await navigator.share({ title, text, files: [recordedFile] });
+      } else {
+        setCopyStatus("Upload the recording to share a link.");
+      }
+    } catch (error) {
+      setCopyStatus("Share canceled.");
+    }
+  };
+
+  const handleInstagramShare = async () => {
+    if (!shareUrl) {
+      return;
+    }
+    await handleCopyLink();
+    window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
+  };
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+      if (recordingUrl) {
+        URL.revokeObjectURL(recordingUrl);
+      }
+    };
+  }, [stream, recordingUrl]);
+
   return (
     <div
       className={`${dmSans.className} ${spaceGrotesk.variable} min-h-screen bg-[radial-gradient(circle_at_top,_#f2ecff_0%,_#f7f2ff_35%,_#fef8f3_70%,_#ffffff_100%)] text-slate-900`}
@@ -79,7 +323,7 @@ export default function Home() {
                 GoDomain Teacher
               </p>
               <h1 className="text-2xl font-semibold text-slate-900">
-                Good evening, Ms. Diala
+                Good evening, Coach Diala
               </h1>
             </div>
             <div className="flex flex-1 items-center justify-center gap-3 md:justify-end">
@@ -92,7 +336,13 @@ export default function Home() {
                   Ctrl K
                 </span>
               </div>
-              <button className="rounded-2xl bg-emerald-500/90 px-4 py-2 text-xs font-semibold text-white">
+              <button
+                className="rounded-2xl bg-emerald-500/90 px-4 py-2 text-xs font-semibold text-white"
+                onClick={() => {
+                  setIsLiveOpen(true);
+                  startPreview();
+                }}
+              >
                 Live Session
               </button>
               <div className="flex items-center gap-3 rounded-2xl bg-white/70 px-3 py-2">
@@ -110,24 +360,24 @@ export default function Home() {
               <div className="relative overflow-hidden rounded-[30px] bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-400 p-8 text-white shadow-[0_25px_70px_-40px_rgba(90,60,160,0.75)]">
                 <div className="max-w-md">
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-indigo-100">
-                    Teacher Dashboard
+                    Driving Instructor Dashboard
                   </p>
                   <h2
                     className="mt-3 text-3xl font-semibold tracking-tight"
                     style={{ fontFamily: "var(--font-space-grotesk)" }}
                   >
-                    Keep every learner on pace and energized.
+                    Keep every learner road-ready and confident.
                   </h2>
                   <p className="mt-3 text-sm text-indigo-100">
-                    Track quiz performance, monitor learning plans, and share
-                    content all from one calm, beautiful workspace.
+                    Track lesson progress, road test readiness, and share
+                    driving resources from one calm, beautiful workspace.
                   </p>
                   <div className="mt-6 flex flex-wrap gap-3">
                     <button className="rounded-full bg-white px-5 py-2 text-xs font-semibold text-indigo-700">
                       Create quick quiz
                     </button>
                     <button className="rounded-full border border-white/40 px-5 py-2 text-xs font-semibold text-white">
-                      View class insights
+                      View learner insights
                     </button>
                   </div>
                 </div>
@@ -144,11 +394,11 @@ export default function Home() {
                         Progress tracking
                       </p>
                       <h3 className="text-lg font-semibold text-slate-800">
-                        Student quiz performance
+                        Lesson checkpoint scores
                       </h3>
                     </div>
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      +12% this week
+                      +8% this week
                     </span>
                   </div>
                   <div className="mt-5 flex items-end gap-2">
@@ -166,8 +416,8 @@ export default function Home() {
                     ))}
                   </div>
                   <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
-                    <span>Avg. score 83%</span>
-                    <span>142 quizzes graded</span>
+                    <span>Avg. score 86%</span>
+                    <span>98 check-ins logged</span>
                   </div>
                 </div>
 
@@ -178,28 +428,28 @@ export default function Home() {
                         Progress tracking
                       </p>
                       <h3 className="text-lg font-semibold text-slate-800">
-                        Planned learning monitor
+                        Lesson plan monitor
                       </h3>
                     </div>
                     <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">
-                      18 plans active
+                      12 plans active
                     </span>
                   </div>
                   <div className="mt-5 space-y-4">
                     {[
                       {
-                        label: "Cell biology module",
-                        value: 72,
+                        label: "City driving module",
+                        value: 78,
                         color: "from-emerald-400 to-teal-500",
                       },
                       {
-                        label: "Genetics lab week",
-                        value: 58,
+                        label: "Highway merge drills",
+                        value: 64,
                         color: "from-indigo-400 to-violet-500",
                       },
                       {
-                        label: "Exam review sprints",
-                        value: 84,
+                        label: "Parking & turns mastery",
+                        value: 86,
                         color: "from-rose-400 to-orange-400",
                       },
                     ].map((item) => (
@@ -220,8 +470,8 @@ export default function Home() {
                     ))}
                   </div>
                   <div className="mt-5 flex items-center justify-between text-xs text-slate-500">
-                    <span>On-track: 76%</span>
-                    <span>Needs focus: 14%</span>
+                    <span>On-track: 81%</span>
+                    <span>Needs focus: 11%</span>
                   </div>
                 </div>
               </div>
@@ -230,36 +480,52 @@ export default function Home() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                      Teacher content dashboard
+                      Driving school content hub
                     </p>
                     <h3 className="text-lg font-semibold text-slate-800">
-                      Share lessons, media, and resources
+                      Share lesson videos, checklists, and road rules
                     </h3>
                   </div>
-                  <button className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600">
+                  <label
+                    htmlFor="dashboard-upload"
+                    className="cursor-pointer rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                  >
                     Upload new content
-                  </button>
+                    <input
+                      id="dashboard-upload"
+                      type="file"
+                      multiple
+                      accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.zip,.rar"
+                      className="sr-only"
+                      onChange={handleUploadChange}
+                    />
+                  </label>
                 </div>
+                {selectedFiles.length > 0 && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Selected: {selectedFiles.join(", ")}
+                  </p>
+                )}
                 <div className="mt-6 grid gap-4 md:grid-cols-2">
                   {[
                     {
-                      title: "Recorded Classes",
-                      description: "18 videos · 6.4 GB",
+                      title: "Behind-the-Wheel Sessions",
+                      description: "18 videos - 6.4 GB",
                       color: "from-indigo-500 to-violet-500",
                     },
                     {
-                      title: "Notes & Handouts",
-                      description: "42 files · updated 2h ago",
+                      title: "Theory Notes & Handouts",
+                      description: "42 files - updated 2h ago",
                       color: "from-emerald-400 to-teal-500",
                     },
                     {
-                      title: "Images & Diagrams",
-                      description: "312 visuals · tagged",
+                      title: "Road Signs & Diagrams",
+                      description: "312 visuals - tagged",
                       color: "from-rose-400 to-orange-400",
                     },
                     {
-                      title: "Helpful Links",
-                      description: "27 references · curated",
+                      title: "Test Prep Links",
+                      description: "27 references - curated",
                       color: "from-slate-600 to-slate-800",
                     },
                   ].map((item) => (
@@ -293,7 +559,7 @@ export default function Home() {
                       Feedback
                     </p>
                     <h3 className="text-lg font-semibold text-slate-800">
-                      Direct messages
+                      Learner messages
                     </h3>
                   </div>
                   <button className="rounded-full bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-600">
@@ -302,9 +568,9 @@ export default function Home() {
                 </div>
                 <div className="mt-5 space-y-3">
                   {[
-                    { name: "K. Onyango", note: "Needs help with Chapter 4" },
-                    { name: "S. Patel", note: "Submitted early quiz" },
-                    { name: "L. Novak", note: "Requested a recap" },
+                    { name: "K. Onyango", note: "Needs help with roundabouts" },
+                    { name: "S. Patel", note: "Submitted logbook early" },
+                    { name: "L. Novak", note: "Requested night driving recap" },
                   ].map((student) => (
                     <div
                       key={student.name}
@@ -329,7 +595,7 @@ export default function Home() {
                   <div className="mt-2 flex items-center gap-2">
                     <input
                       className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-500 outline-none focus:border-indigo-200"
-                      placeholder="Type a note to selected students"
+                      placeholder="Type a note to selected learners"
                     />
                     <button className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
                       Send
@@ -345,7 +611,7 @@ export default function Home() {
                       Learning pulse
                     </p>
                     <h3 className="text-lg font-semibold text-slate-800">
-                      Class engagement
+                      Learner engagement
                     </h3>
                   </div>
                   <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-600">
@@ -354,9 +620,9 @@ export default function Home() {
                 </div>
                 <div className="mt-5 space-y-4">
                   {[
-                    { label: "Live attendance", value: "24/27" },
-                    { label: "Quiz completion", value: "93%" },
-                    { label: "Forum questions", value: "18 today" },
+                    { label: "Lesson attendance", value: "18/20" },
+                    { label: "Theory completion", value: "92%" },
+                    { label: "Safety questions", value: "11 today" },
                   ].map((item) => (
                     <div
                       key={item.label}
@@ -371,13 +637,13 @@ export default function Home() {
 
               <div className="rounded-[28px] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 text-white shadow-[0_25px_70px_-40px_rgba(10,10,20,0.8)]">
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                  Next class
+                  Next lesson
                 </p>
                 <h3 className="mt-2 text-lg font-semibold">
-                  Genetics Lab Live
+                  Highway Merge Practice
                 </h3>
                 <p className="mt-1 text-xs text-slate-300">
-                  Thursday - 3:30 PM - Virtual Room B
+                  Thursday - 3:30 PM - Lot B
                 </p>
                 <div className="mt-5 flex items-center gap-2">
                   <button className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-900">
@@ -392,6 +658,217 @@ export default function Home() {
           </section>
         </main>
       </div>
+      {isLiveOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-8">
+          <div className="w-full max-w-3xl rounded-[28px] bg-white p-6 shadow-[0_30px_80px_-40px_rgba(20,20,40,0.7)]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  Go Live
+                </p>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Live session recording
+                </h3>
+              </div>
+              <button
+                className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                onClick={closeLive}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+              <video
+                ref={videoRef}
+                className="h-[320px] w-full bg-black object-cover"
+                autoPlay
+                muted
+                playsInline
+              />
+            </div>
+
+            {mediaError ? (
+              <p className="mt-3 text-xs text-rose-500">{mediaError}</p>
+            ) : null}
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                className={`rounded-full px-4 py-2 text-xs font-semibold text-white ${
+                  isRecording ? "bg-slate-300" : "bg-slate-900"
+                }`}
+                onClick={startRecording}
+                disabled={isRecording}
+              >
+                Start recording
+              </button>
+              <button
+                className={`rounded-full px-4 py-2 text-xs font-semibold text-white ${
+                  isRecording ? "bg-rose-500" : "bg-rose-300"
+                }`}
+                onClick={stopRecording}
+                disabled={!isRecording}
+              >
+                Stop recording
+              </button>
+              <button
+                className={`rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold ${
+                  isRecording ? "text-slate-600" : "text-slate-300"
+                }`}
+                onClick={togglePauseRecording}
+                disabled={!isRecording}
+              >
+                {isPaused ? "Resume" : "Pause"}
+              </button>
+              <button
+                className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                onClick={startPreview}
+              >
+                Refresh preview
+              </button>
+            </div>
+
+            {isFinalizing ? (
+              <p className="mt-4 text-xs text-slate-500">
+                Finalizing recording...
+              </p>
+            ) : null}
+
+            {recordingUrl ? (
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  After recording (recommended)
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Recommended: upload or share the recording to reach students.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <a
+                    href={recordingUrl}
+                    download={recordedFile?.name || "live-session.webm"}
+                    className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700"
+                  >
+                    Download recording
+                  </a>
+                  <button
+                    className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                    onClick={handleUploadRecording}
+                    disabled={isUploading}
+                  >
+                    {isUploading ? "Uploading..." : "Upload recording"}
+                  </button>
+                  <button
+                    className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                    onClick={handleDeviceShare}
+                    disabled={!recordedFile}
+                  >
+                    Share via device
+                  </button>
+                </div>
+
+                {uploadError ? (
+                  <p className="mt-2 text-xs text-rose-500">{uploadError}</p>
+                ) : null}
+
+                {shareUrl ? (
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold text-slate-600">
+                      Share link
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <input
+                        readOnly
+                        value={shareUrl}
+                        className="w-full flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600"
+                      />
+                      <button
+                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                        onClick={handleCopyLink}
+                      >
+                        Copy link
+                      </button>
+                    </div>
+                    {copyStatus ? (
+                      <p className="mt-2 text-xs text-slate-500">
+                        {copyStatus}
+                      </p>
+                    ) : null}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <a
+                        href={`https://wa.me/?text=${encodeURIComponent(
+                          `Live session recording from GoDomain Teacher. ${shareUrl}`
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700"
+                      >
+                        WhatsApp
+                      </a>
+                      <a
+                        href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
+                          "Live session recording from GoDomain Teacher."
+                        )}&url=${encodeURIComponent(shareUrl)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                      >
+                        X
+                      </a>
+                      <a
+                        href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+                          shareUrl
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                      >
+                        Facebook
+                      </a>
+                      <a
+                        href={`https://t.me/share/url?url=${encodeURIComponent(
+                          shareUrl
+                        )}&text=${encodeURIComponent(
+                          "Live session recording from GoDomain Teacher."
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                      >
+                        Telegram
+                      </a>
+                      <a
+                        href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
+                          shareUrl
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                      >
+                        LinkedIn
+                      </a>
+                      <button
+                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                        onClick={handleInstagramShare}
+                      >
+                        Instagram
+                      </button>
+                    </div>
+                    <p className="mt-2 text-[11px] text-slate-400">
+                      Instagram web does not support direct link sharing. The
+                      button copies the link and opens Instagram.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-slate-500">
+                    Upload to generate a shareable link.
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
+

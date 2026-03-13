@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 import { DM_Sans, Space_Grotesk } from "next/font/google";
 
 const dmSans = DM_Sans({
@@ -62,6 +65,13 @@ const recentUploads = [
 ];
 
 export default function ContentDashboardPage() {
+  const [selectedFiles, setSelectedFiles] = useState([]);
+
+  const handleUploadChange = (event) => {
+    const files = Array.from(event.target.files || []);
+    setSelectedFiles(files.map((file) => file.name));
+  };
+
   return (
     <div
       className={`${dmSans.className} ${spaceGrotesk.variable} min-h-screen w-full bg-[radial-gradient(circle_at_top,_#f3ecff_0%,_#f8f4ff_35%,_#fff6ee_70%,_#ffffff_100%)] text-slate-900`}
@@ -152,10 +162,26 @@ export default function ContentDashboardPage() {
                     Latest uploads and shares
                   </h2>
                 </div>
-                <button className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600">
+                <label
+                  htmlFor="content-upload"
+                  className="cursor-pointer rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                >
                   Upload new
-                </button>
+                  <input
+                    id="content-upload"
+                    type="file"
+                    multiple
+                    accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.zip,.rar"
+                    className="sr-only"
+                    onChange={handleUploadChange}
+                  />
+                </label>
               </div>
+              {selectedFiles.length > 0 && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Selected: {selectedFiles.join(", ")}
+                </p>
+              )}
               <div className="mt-5 space-y-3">
                 {recentUploads.map((item) => (
                   <div
