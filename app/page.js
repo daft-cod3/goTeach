@@ -16,6 +16,92 @@ const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
 });
 
+const STORAGE_KEY = "goTeachContentUploads";
+const STORAGE_PLAN_KEY = "goTeachStoragePlan";
+const BASE_STORAGE_BYTES = 50 * 1024 * 1024;
+const UPGRADED_STORAGE_BYTES = 1024 * 1024 * 1024;
+
+const formatBytes = (bytes) => {
+  if (!bytes || Number.isNaN(bytes)) return "0 MB";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const precision = size >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${size.toFixed(precision)} ${units[unitIndex]}`;
+};
+
+const generateId = () => {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const getExtension = (name = "") => name.split(".").pop()?.toLowerCase();
+
+const isVideoAsset = (file) => {
+  if (!file) return false;
+  if (file.type?.startsWith("video/")) return true;
+  const ext = getExtension(file.name);
+  return ["mp4", "mov", "mkv", "webm", "avi"].includes(ext);
+};
+
+const getFileLabel = (file) => {
+  if (!file) return "File";
+  if (file.type?.startsWith("video/")) return "Video";
+  if (file.type?.startsWith("image/")) return "Image";
+  const name = file.name || "";
+  const ext = getExtension(name);
+  if (ext === "pdf") return "PDF";
+  if (ext === "ppt" || ext === "pptx") return "PPT";
+  if (ext === "xls" || ext === "xlsx" || ext === "csv") return "Spreadsheet";
+  if (ext === "doc" || ext === "docx") return "Document";
+  return "File";
+};
+
+const formatRelativeTime = (dateString) => {
+  if (!dateString) return "Uploaded just now";
+  const timestamp = new Date(dateString).getTime();
+  if (Number.isNaN(timestamp)) return "Uploaded just now";
+  const diffMs = Date.now() - timestamp;
+  const diffMins = Math.max(1, Math.round(diffMs / 60000));
+  if (diffMins < 60) {
+    return `Uploaded ${diffMins} min${diffMins === 1 ? "" : "s"} ago`;
+  }
+  const diffHours = Math.round(diffMins / 60);
+  if (diffHours < 24) {
+    return `Uploaded ${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+  }
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays < 7) {
+    return `Uploaded ${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
+  }
+  const displayDate = new Date(timestamp).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  return `Uploaded on ${displayDate}`;
+};
+
+const buildUploadEntry = (file) => {
+  const uploadedAt = new Date().toISOString();
+  return {
+    id: generateId(),
+    title: file.name,
+    type: getFileLabel(file),
+    size: formatBytes(file.size),
+    sizeBytes: file.size,
+    uploadedAt,
+    time: formatRelativeTime(uploadedAt),
+    isVideo: isVideoAsset(file),
+  };
+};
+
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isLiveOpen, setIsLiveOpen] = useState(false);
@@ -28,15 +114,77 @@ export default function Home() {
   const [recordedFile, setRecordedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [contentUploadError, setContentUploadError] = useState("");
   const [shareUrl, setShareUrl] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
+  const [uploads, setUploads] = useState([]);
+  const [isUpgradedPlan, setIsUpgradedPlan] = useState(false);
   const videoRef = useRef(null);
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
 
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        const hydrated = parsed.map((item) => ({
+          ...item,
+          id: item.id || generateId(),
+          type: item.type || "File",
+          sizeBytes: Number(item.sizeBytes) || 0,
+          isVideo:
+            typeof item.isVideo === "boolean"
+              ? item.isVideo
+              : item.type === "Video",
+          time: formatRelativeTime(item.uploadedAt),
+        }));
+        setUploads(hydrated);
+      }
+    } catch {
+      setUploads([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    const storedPlan = localStorage.getItem(STORAGE_PLAN_KEY);
+    if (storedPlan === "upgraded") {
+      setIsUpgradedPlan(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(uploads));
+  }, [uploads]);
+
+  const storageLimitBytes = isUpgradedPlan
+    ? UPGRADED_STORAGE_BYTES
+    : BASE_STORAGE_BYTES;
+  const usedBytes = uploads.reduce(
+    (total, item) => total + (item.sizeBytes || 0),
+    0,
+  );
+  const remainingBytes = Math.max(0, storageLimitBytes - usedBytes);
+
   const handleUploadChange = (event) => {
     const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+
+    const incomingBytes = files.reduce((total, file) => total + file.size, 0);
+    if (usedBytes + incomingBytes > storageLimitBytes) {
+      setContentUploadError(
+        `Storage limit reached. ${formatBytes(
+          remainingBytes,
+        )} free. Upgrade to add more.`,
+      );
+      return;
+    }
+
+    setContentUploadError("");
     setSelectedFiles(files.map((file) => file.name));
+    const nextUploads = files.map(buildUploadEntry);
+    setUploads((prev) => [...nextUploads, ...prev]);
   };
 
   const startPreview = async () => {
@@ -257,6 +405,56 @@ export default function Home() {
       }
     };
   }, [stream, recordingUrl]);
+
+  const recordedUploads = uploads.filter((item) => item.isVideo);
+  const recordedCount = recordedUploads.length;
+  const recordedSize = recordedUploads.reduce(
+    (total, item) => total + (item.sizeBytes || 0),
+    0,
+  );
+  const imageUploads = uploads.filter((item) => item.type === "Image");
+  const imageCount = imageUploads.length;
+  const imageSize = imageUploads.reduce(
+    (total, item) => total + (item.sizeBytes || 0),
+    0,
+  );
+  const notesUploads = uploads.filter(
+    (item) => !item.isVideo && item.type !== "Image",
+  );
+  const notesCount = notesUploads.length;
+  const notesSize = notesUploads.reduce(
+    (total, item) => total + (item.sizeBytes || 0),
+    0,
+  );
+
+  const hubCards = [
+    {
+      title: "Behind-the-Wheel Sessions",
+      description: `${recordedCount} ${
+        recordedCount === 1 ? "video" : "videos"
+      } - ${formatBytes(recordedSize)}`,
+      color: "from-indigo-500 to-violet-500",
+    },
+    {
+      title: "Theory Notes & Handouts",
+      description: `${notesCount} ${notesCount === 1 ? "file" : "files"} - ${formatBytes(
+        notesSize,
+      )}`,
+      color: "from-emerald-400 to-teal-500",
+    },
+    {
+      title: "Road Signs & Diagrams",
+      description: `${imageCount} ${
+        imageCount === 1 ? "visual" : "visuals"
+      } - ${formatBytes(imageSize)}`,
+      color: "from-rose-400 to-orange-400",
+    },
+    {
+      title: "Test Prep Links",
+      description: "",
+      color: "from-slate-600 to-slate-800",
+    },
+  ];
 
   return (
     <div
@@ -506,29 +704,13 @@ export default function Home() {
                     Selected: {selectedFiles.join(", ")}
                   </p>
                 )}
+                {contentUploadError && (
+                  <p className="mt-2 text-xs font-semibold text-rose-500">
+                    {contentUploadError}
+                  </p>
+                )}
                 <div className="mt-6 grid gap-4 md:grid-cols-2">
-                  {[
-                    {
-                      title: "Behind-the-Wheel Sessions",
-                      description: "18 videos - 6.4 GB",
-                      color: "from-indigo-500 to-violet-500",
-                    },
-                    {
-                      title: "Theory Notes & Handouts",
-                      description: "42 files - updated 2h ago",
-                      color: "from-emerald-400 to-teal-500",
-                    },
-                    {
-                      title: "Road Signs & Diagrams",
-                      description: "312 visuals - tagged",
-                      color: "from-rose-400 to-orange-400",
-                    },
-                    {
-                      title: "Test Prep Links",
-                      description: "27 references - curated",
-                      color: "from-slate-600 to-slate-800",
-                    },
-                  ].map((item) => (
+                  {hubCards.map((item) => (
                     <div
                       key={item.title}
                       className="group rounded-2xl border border-slate-100 bg-white/60 p-4 transition hover:-translate-y-1 hover:shadow-lg"
@@ -539,9 +721,13 @@ export default function Home() {
                       <h4 className="mt-3 text-sm font-semibold text-slate-800">
                         {item.title}
                       </h4>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {item.description}
-                      </p>
+                      {item.description ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {item.description}
+                        </p>
+                      ) : (
+                        <div className="mt-4" />
+                      )}
                       <button className="mt-4 text-xs font-semibold text-indigo-600">
                         Manage library
                       </button>
