@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { DM_Sans, Space_Grotesk } from "next/font/google";
 
 const dmSans = DM_Sans({
@@ -18,8 +18,64 @@ const spaceGrotesk = Space_Grotesk({
 
 const STORAGE_KEY = "goTeachContentUploads";
 const STORAGE_PLAN_KEY = "goTeachStoragePlan";
-const BASE_STORAGE_BYTES = 50 * 1024 * 1024;
-const UPGRADED_STORAGE_BYTES = 1024 * 1024 * 1024;
+const MB = 1024 * 1024;
+const GB = 1024 * MB;
+const STORAGE_PLANS = [
+  {
+    id: "free",
+    label: "Free",
+    bytes: 50 * MB,
+    detail: "50 MB storage · Unlimited uploads",
+    price: "KES 0",
+  },
+  {
+    id: "pro-5gb",
+    label: "Plus 5 GB",
+    bytes: 5 * GB,
+    detail: "5 GB storage · Unlimited uploads",
+    price: "KES 500",
+  },
+  {
+    id: "pro-10gb",
+    label: "Pro 10 GB",
+    bytes: 10 * GB,
+    detail: "10 GB storage · Unlimited uploads",
+    price: "KES 1,000",
+  },
+];
+
+const feedbackStudents = [
+  { id: "stu-001", name: "Abena Kofi", classCode: "B1" },
+  { id: "stu-002", name: "Musa Diallo", classCode: "A2" },
+  { id: "stu-003", name: "Lara Juma", classCode: "C1" },
+  { id: "stu-004", name: "Hassan Okoye", classCode: "D2" },
+  { id: "stu-005", name: "Ama Mensah", classCode: "B2" },
+  { id: "stu-006", name: "Kwame Owusu", classCode: "C2" },
+  { id: "stu-007", name: "Zara Ncube", classCode: "A1" },
+  { id: "stu-008", name: "Yao Toure", classCode: "B3" },
+  { id: "stu-009", name: "Nia Kamau", classCode: "C3" },
+  { id: "stu-010", name: "Omar Ali", classCode: "D1" },
+  { id: "stu-011", name: "Lina Hassan", classCode: "B1" },
+  { id: "stu-012", name: "Tariq Malik", classCode: "A2" },
+  { id: "stu-013", name: "Sade Okoro", classCode: "C1" },
+  { id: "stu-014", name: "Eli Mensah", classCode: "B2" },
+  { id: "stu-015", name: "Naomi Boateng", classCode: "A1" },
+  { id: "stu-016", name: "Kofi Asare", classCode: "C2" },
+  { id: "stu-017", name: "Amina Yusuf", classCode: "D1" },
+  { id: "stu-018", name: "Chidi Nwosu", classCode: "B3" },
+  { id: "stu-019", name: "Eshe Okafor", classCode: "C3" },
+  { id: "stu-020", name: "Jacob Njeri", classCode: "A2" },
+  { id: "stu-021", name: "Ruth Agyemang", classCode: "B1" },
+  { id: "stu-022", name: "Farah Abdi", classCode: "D2" },
+  { id: "stu-023", name: "Samir Idris", classCode: "A1" },
+  { id: "stu-024", name: "Nana Prempeh", classCode: "C1" },
+  { id: "stu-025", name: "Fatima Noor", classCode: "B2" },
+  { id: "stu-026", name: "Kojo Mensa", classCode: "C2" },
+  { id: "stu-027", name: "Laila Abbas", classCode: "A2" },
+  { id: "stu-028", name: "Jabari Okafor", classCode: "D1" },
+  { id: "stu-029", name: "Imani Sarpong", classCode: "B3" },
+  { id: "stu-030", name: "Tolu Adebayo", classCode: "C3" },
+];
 
 const formatBytes = (bytes) => {
   if (!bytes || Number.isNaN(bytes)) return "0 MB";
@@ -104,24 +160,15 @@ const buildUploadEntry = (file) => {
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState([]);
-  const [isLiveOpen, setIsLiveOpen] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [isFinalizing, setIsFinalizing] = useState(false);
-  const [mediaError, setMediaError] = useState("");
-  const [stream, setStream] = useState(null);
-  const [recordingUrl, setRecordingUrl] = useState("");
-  const [recordedFile, setRecordedFile] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState("");
   const [contentUploadError, setContentUploadError] = useState("");
-  const [shareUrl, setShareUrl] = useState("");
-  const [copyStatus, setCopyStatus] = useState("");
   const [uploads, setUploads] = useState([]);
-  const [isUpgradedPlan, setIsUpgradedPlan] = useState(false);
-  const videoRef = useRef(null);
-  const recorderRef = useRef(null);
-  const chunksRef = useRef([]);
+  const [planId, setPlanId] = useState("free");
+  const [feedbackMode, setFeedbackMode] = useState("broadcast");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackQuery, setFeedbackQuery] = useState("");
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState([]);
+  const [feedbackStatus, setFeedbackStatus] = useState("");
+  const [showAllFeedbackRecipients, setShowAllFeedbackRecipients] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -149,8 +196,13 @@ export default function Home() {
 
   useEffect(() => {
     const storedPlan = localStorage.getItem(STORAGE_PLAN_KEY);
+    if (!storedPlan) return;
     if (storedPlan === "upgraded") {
-      setIsUpgradedPlan(true);
+      setPlanId("pro-5gb");
+      return;
+    }
+    if (STORAGE_PLANS.some((plan) => plan.id === storedPlan)) {
+      setPlanId(storedPlan);
     }
   }, []);
 
@@ -158,9 +210,21 @@ export default function Home() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(uploads));
   }, [uploads]);
 
-  const storageLimitBytes = isUpgradedPlan
-    ? UPGRADED_STORAGE_BYTES
-    : BASE_STORAGE_BYTES;
+  useEffect(() => {
+    localStorage.setItem(STORAGE_PLAN_KEY, planId);
+  }, [planId]);
+
+  useEffect(() => {
+    setFeedbackStatus("");
+  }, [feedbackMode, feedbackMessage, selectedRecipientIds, feedbackQuery]);
+
+  useEffect(() => {
+    setShowAllFeedbackRecipients(false);
+  }, [feedbackMode, selectedRecipientIds, feedbackQuery]);
+
+  const currentPlan =
+    STORAGE_PLANS.find((plan) => plan.id === planId) || STORAGE_PLANS[0];
+  const storageLimitBytes = currentPlan.bytes;
   const usedBytes = uploads.reduce(
     (total, item) => total + (item.sizeBytes || 0),
     0,
@@ -174,9 +238,9 @@ export default function Home() {
     const incomingBytes = files.reduce((total, file) => total + file.size, 0);
     if (usedBytes + incomingBytes > storageLimitBytes) {
       setContentUploadError(
-        `Storage limit reached. ${formatBytes(
+        `Storage limit reached for ${currentPlan.label}. ${formatBytes(
           remainingBytes,
-        )} free. Upgrade to add more.`,
+        )} free. Upgrade for more storage.`,
       );
       return;
     }
@@ -187,224 +251,57 @@ export default function Home() {
     setUploads((prev) => [...nextUploads, ...prev]);
   };
 
-  const startPreview = async () => {
-    setMediaError("");
-    if (stream) {
+  const normalizeMessage = (message, name) => {
+    const trimmed = message.trim();
+    if (!trimmed) {
+      return `Hi ${name},`;
+    }
+    if (trimmed.includes("{name}")) {
+      return trimmed.replaceAll("{name}", name);
+    }
+    return `Hi ${name}, ${trimmed}`;
+  };
+
+  const filteredRecipients = feedbackStudents.filter((student) => {
+    if (!feedbackQuery.trim()) return true;
+    const query = feedbackQuery.toLowerCase();
+    return (
+      student.name.toLowerCase().includes(query) ||
+      student.classCode.toLowerCase().includes(query)
+    );
+  });
+
+  const recipients =
+    feedbackMode === "broadcast"
+      ? feedbackStudents
+      : feedbackStudents.filter((student) =>
+          selectedRecipientIds.includes(student.id),
+        );
+  const previewRecipients = showAllFeedbackRecipients
+    ? recipients
+    : recipients.slice(0, 10);
+
+  const handleRecipientToggle = (id) => {
+    setSelectedRecipientIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  };
+
+  const handleSendFeedback = () => {
+    if (!feedbackMessage.trim()) {
+      setFeedbackStatus("Write a message before sending.");
       return;
     }
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-      setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-    } catch (error) {
-      setMediaError(
-        "Camera or microphone access was blocked. Please allow permissions and try again."
-      );
-    }
-  };
-
-  const startRecording = async () => {
-    if (typeof MediaRecorder === "undefined") {
-      setMediaError("Recording is not supported in this browser.");
+    if (feedbackMode === "targeted" && recipients.length === 0) {
+      setFeedbackStatus("Select at least one student.");
       return;
     }
-
-    if (!stream) {
-      await startPreview();
-    }
-    if (!stream) {
-      return;
-    }
-
-    const preferredTypes = [
-      "video/webm;codecs=vp9,opus",
-      "video/webm;codecs=vp8,opus",
-      "video/webm",
-    ];
-    let mimeType = "";
-    for (const type of preferredTypes) {
-      if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type)) {
-        mimeType = type;
-        break;
-      }
-    }
-
-    try {
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      chunksRef.current = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, {
-          type: mimeType || "video/webm",
-        });
-        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-        const fileName = `live-session-${timestamp}.webm`;
-        const file = new File([blob], fileName, {
-          type: mimeType || "video/webm",
-        });
-        const url = URL.createObjectURL(blob);
-        setRecordingUrl(url);
-        setRecordedFile(file);
-        setShareUrl("");
-        setUploadError("");
-        setIsFinalizing(false);
-      };
-      recorder.start(1000);
-      recorderRef.current = recorder;
-      setIsRecording(true);
-      setIsPaused(false);
-      setIsFinalizing(false);
-    } catch (error) {
-      setMediaError("Recording failed to start on this browser.");
-    }
+    setFeedbackStatus(
+      `Sent to ${recipients.length} student${
+        recipients.length === 1 ? "" : "s"
+      }.`,
+    );
   };
-
-  const stopRecording = () => {
-    const recorder = recorderRef.current;
-    if (recorder && recorder.state !== "inactive") {
-      setIsFinalizing(true);
-      try {
-        if (typeof recorder.requestData === "function") {
-          recorder.requestData();
-        }
-      } catch (error) {
-        // Ignore requestData errors and proceed to stop.
-      }
-      recorder.stop();
-    }
-    setIsRecording(false);
-    setIsPaused(false);
-  };
-
-  const togglePauseRecording = () => {
-    const recorder = recorderRef.current;
-    if (!recorder) {
-      return;
-    }
-    if (recorder.state === "recording" && typeof recorder.pause === "function") {
-      recorder.pause();
-      setIsPaused(true);
-    } else if (recorder.state === "paused" && typeof recorder.resume === "function") {
-      recorder.resume();
-      setIsPaused(false);
-    }
-  };
-
-  const closeLive = () => {
-    if (recorderRef.current && recorderRef.current.state !== "inactive") {
-      recorderRef.current.stop();
-    }
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
-    if (recordingUrl) {
-      URL.revokeObjectURL(recordingUrl);
-    }
-    setStream(null);
-    setRecordingUrl("");
-    setIsRecording(false);
-    setMediaError("");
-    setRecordedFile(null);
-    setIsUploading(false);
-    setUploadError("");
-    setShareUrl("");
-    setCopyStatus("");
-    setIsFinalizing(false);
-    setIsLiveOpen(false);
-  };
-
-  const handleUploadRecording = async () => {
-    if (!recordedFile) {
-      return;
-    }
-    setIsUploading(true);
-    setUploadError("");
-    try {
-      const formData = new FormData();
-      formData.append("file", recordedFile);
-      const response = await fetch("/api/recordings", {
-        method: "POST",
-        body: formData,
-      });
-      if (!response.ok) {
-        throw new Error("Upload failed");
-      }
-      const data = await response.json();
-      setShareUrl(data.shareUrl || data.url || "");
-    } catch (error) {
-      setUploadError("Upload failed. Please try again.");
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleCopyLink = async () => {
-    if (!shareUrl) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopyStatus("Link copied.");
-    } catch (error) {
-      setCopyStatus("Could not copy link.");
-    }
-  };
-
-  const handleDeviceShare = async () => {
-    if (!navigator.share) {
-      setCopyStatus("Share is not supported on this device.");
-      return;
-    }
-    const title = "Live session recording";
-    const text = "Live session recording from GoDomain Teacher.";
-    try {
-      if (shareUrl) {
-        await navigator.share({ title, text, url: shareUrl });
-        return;
-      }
-      if (recordedFile && navigator.canShare?.({ files: [recordedFile] })) {
-        await navigator.share({ title, text, files: [recordedFile] });
-      } else {
-        setCopyStatus("Upload the recording to share a link.");
-      }
-    } catch (error) {
-      setCopyStatus("Share canceled.");
-    }
-  };
-
-  const handleInstagramShare = async () => {
-    if (!shareUrl) {
-      return;
-    }
-    await handleCopyLink();
-    window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
-  };
-
-  useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-    }
-  }, [stream]);
-
-  useEffect(() => {
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-      if (recordingUrl) {
-        URL.revokeObjectURL(recordingUrl);
-      }
-    };
-  }, [stream, recordingUrl]);
 
   const recordedUploads = uploads.filter((item) => item.isVideo);
   const recordedCount = recordedUploads.length;
@@ -474,15 +371,16 @@ export default function Home() {
 
           <nav className="flex flex-col gap-2 text-sm font-medium text-slate-600">
             {[
-              { label: "Dashboard", href: "/" },
-              { label: "Students", href: "/" },
-              { label: "Progress Tracking", href: "/progTrack" },
-              { label: "Assessments", href: "/" },
-              { label: "Live Sessions", href: "/" },
-              { label: "Attendance", href: "/" },
-              { label: "Content Hub", href: "/content" },
-              { label: "Reports", href: "/" },
-            ].map((item, index) => (
+            { label: "Dashboard", href: "/" },
+            { label: "Students", href: "/students" },
+            { label: "Progress Tracking", href: "/progTrack" },
+            { label: "Assessments", href: "/assessments" },
+            { label: "Live Sessions", href: "/live" },
+            { label: "Attendance", href: "/attendance" },
+            { label: "Content Hub", href: "/content" },
+            { label: "Learner Insights", href: "/insights" },
+            { label: "Subscriptions", href: "/subscriptions" },
+          ].map((item, index) => (
               <Link
                 key={item.label}
                 href={item.href}
@@ -503,14 +401,20 @@ export default function Home() {
           </nav>
 
           <div className="mt-auto rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-5 text-white">
-            <p className="text-sm font-semibold">Upgrade to GoDomain Pro</p>
+            <p className="text-sm font-semibold">Storage-based subscription</p>
             <p className="mt-2 text-xs text-slate-200">
-              Unlock advanced analytics, auto feedback, and larger storage for
-              your classes.
+              Unlimited uploads. Choose Plus 5 GB (KES 500) or Pro 10 GB (KES
+              1,000) when you need more space.
             </p>
-            <button className="mt-4 w-full rounded-2xl bg-white/15 py-2 text-xs font-semibold uppercase tracking-wide">
-              Upgrade now
-            </button>
+            <p className="mt-2 text-xs font-semibold text-white">
+              Current plan: {currentPlan.label} · {currentPlan.price}
+            </p>
+            <Link
+              href="/subscriptions"
+              className="mt-4 w-full rounded-2xl bg-white/15 py-2 text-center text-xs font-semibold uppercase tracking-wide"
+            >
+              Manage plan
+            </Link>
           </div>
         </aside>
 
@@ -521,7 +425,7 @@ export default function Home() {
                 GoDomain Teacher
               </p>
               <h1 className="text-2xl font-semibold text-slate-900">
-                Good evening, Coach Diala
+                Good evening, Coach Amani
               </h1>
             </div>
             <div className="flex flex-1 items-center justify-center gap-3 md:justify-end">
@@ -534,20 +438,17 @@ export default function Home() {
                   Ctrl K
                 </span>
               </div>
-              <button
+              <Link
+                href="/live"
                 className="rounded-2xl bg-emerald-500/90 px-4 py-2 text-xs font-semibold text-white"
-                onClick={() => {
-                  setIsLiveOpen(true);
-                  startPreview();
-                }}
               >
                 Live Session
-              </button>
+              </Link>
               <div className="flex items-center gap-3 rounded-2xl bg-white/70 px-3 py-2">
                 <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-indigo-400 via-purple-400 to-pink-400" />
                 <div className="text-left text-xs">
-                  <p className="font-semibold text-slate-700">Diala Salim</p>
-                  <p className="text-slate-400">Biology - Grade 9</p>
+                  <p className="font-semibold text-slate-700">Amani Mwangi</p>
+                  <p className="text-slate-400">Driving Instructor</p>
                 </div>
               </div>
             </div>
@@ -574,9 +475,12 @@ export default function Home() {
                     <button className="rounded-full bg-white px-5 py-2 text-xs font-semibold text-indigo-700">
                       Create quick quiz
                     </button>
-                    <button className="rounded-full border border-white/40 px-5 py-2 text-xs font-semibold text-white">
+                    <Link
+                      href="/insights"
+                      className="rounded-full border border-white/40 px-5 py-2 text-xs font-semibold text-white"
+                    >
                       View learner insights
-                    </button>
+                    </Link>
                   </div>
                 </div>
                 <div className="absolute right-8 top-1/2 hidden h-44 w-44 -translate-y-1/2 rounded-[40px] bg-white/20 blur-sm lg:block" />
@@ -776,16 +680,158 @@ export default function Home() {
                 </div>
                 <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-3">
                   <p className="text-xs font-semibold text-slate-500">
-                    Send quick feedback
+                    Send feedback
                   </p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <input
-                      className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-500 outline-none focus:border-indigo-200"
-                      placeholder="Type a note to selected learners"
-                    />
-                    <button className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
-                      Send
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                    <button
+                      type="button"
+                      className={`rounded-full px-3 py-1 ${
+                        feedbackMode === "broadcast"
+                          ? "bg-slate-900 text-white"
+                          : "bg-slate-100 text-slate-600"
+                      }`}
+                      onClick={() => setFeedbackMode("broadcast")}
+                    >
+                      Broadcast message
                     </button>
+                    <button
+                      type="button"
+                      className={`rounded-full px-3 py-1 ${
+                        feedbackMode === "targeted"
+                          ? "bg-slate-900 text-white"
+                          : "bg-slate-100 text-slate-600"
+                      }`}
+                      onClick={() => setFeedbackMode("targeted")}
+                    >
+                      Targeted message
+                    </button>
+                  </div>
+
+                  <div className="mt-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                      Message
+                    </p>
+                    <textarea
+                      className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600 outline-none focus:border-indigo-200"
+                      rows={3}
+                      placeholder="Type a message. Use {name} to insert the student name."
+                      value={feedbackMessage}
+                      onChange={(event) => setFeedbackMessage(event.target.value)}
+                    />
+                  </div>
+
+                  {feedbackMode === "broadcast" ? (
+                    <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                      Broadcasting to all {feedbackStudents.length} students.
+                    </div>
+                  ) : (
+                    <div className="mt-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                        Select students
+                      </p>
+                      <input
+                        className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600 outline-none focus:border-indigo-200"
+                        placeholder="Search by name or class"
+                        value={feedbackQuery}
+                        onChange={(event) => setFeedbackQuery(event.target.value)}
+                      />
+                      <div className="mt-2 max-h-32 space-y-2 overflow-auto">
+                        {filteredRecipients.length === 0 ? (
+                          <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                            No students found.
+                          </div>
+                        ) : (
+                          filteredRecipients.map((student) => (
+                            <label
+                              key={student.id}
+                              className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600"
+                            >
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 accent-indigo-500"
+                                  checked={selectedRecipientIds.includes(
+                                    student.id,
+                                  )}
+                                  onChange={() => handleRecipientToggle(student.id)}
+                                />
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-700">
+                                    {student.name}
+                                  </p>
+                                  <p className="text-[11px] text-slate-400">
+                                    Class {student.classCode}
+                                  </p>
+                                </div>
+                              </div>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">
+                        Selected {selectedRecipientIds.length} of{" "}
+                        {feedbackStudents.length}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <button
+                      className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                      onClick={handleSendFeedback}
+                      disabled={
+                        !feedbackMessage.trim() ||
+                        (feedbackMode === "targeted" &&
+                          selectedRecipientIds.length === 0)
+                      }
+                    >
+                      Send message
+                    </button>
+                    {feedbackStatus ? (
+                      <span className="text-xs font-semibold text-emerald-600">
+                        {feedbackStatus}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                      Personalized preview
+                    </p>
+                    <div className="mt-2 max-h-40 space-y-2 overflow-auto">
+                      {recipients.length === 0 ? (
+                        <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                          No recipients selected.
+                        </div>
+                      ) : (
+                        previewRecipients.map((student) => (
+                          <div
+                            key={student.id}
+                            className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600"
+                          >
+                            <p className="text-xs font-semibold text-slate-700">
+                              To {student.name}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {normalizeMessage(feedbackMessage, student.name)}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    {recipients.length > 10 ? (
+                      <button
+                        className="mt-2 text-xs font-semibold text-indigo-600"
+                        type="button"
+                        onClick={() =>
+                          setShowAllFeedbackRecipients((prev) => !prev)
+                        }
+                      >
+                        {showAllFeedbackRecipients
+                          ? "Show fewer"
+                          : `Show all ${recipients.length}`}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -844,216 +890,6 @@ export default function Home() {
           </section>
         </main>
       </div>
-      {isLiveOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-8">
-          <div className="w-full max-w-3xl rounded-[28px] bg-white p-6 shadow-[0_30px_80px_-40px_rgba(20,20,40,0.7)]">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                  Go Live
-                </p>
-                <h3 className="text-lg font-semibold text-slate-900">
-                  Live session recording
-                </h3>
-              </div>
-              <button
-                className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
-                onClick={closeLive}
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-              <video
-                ref={videoRef}
-                className="h-[320px] w-full bg-black object-cover"
-                autoPlay
-                muted
-                playsInline
-              />
-            </div>
-
-            {mediaError ? (
-              <p className="mt-3 text-xs text-rose-500">{mediaError}</p>
-            ) : null}
-
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <button
-                className={`rounded-full px-4 py-2 text-xs font-semibold text-white ${
-                  isRecording ? "bg-slate-300" : "bg-slate-900"
-                }`}
-                onClick={startRecording}
-                disabled={isRecording}
-              >
-                Start recording
-              </button>
-              <button
-                className={`rounded-full px-4 py-2 text-xs font-semibold text-white ${
-                  isRecording ? "bg-rose-500" : "bg-rose-300"
-                }`}
-                onClick={stopRecording}
-                disabled={!isRecording}
-              >
-                Stop recording
-              </button>
-              <button
-                className={`rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold ${
-                  isRecording ? "text-slate-600" : "text-slate-300"
-                }`}
-                onClick={togglePauseRecording}
-                disabled={!isRecording}
-              >
-                {isPaused ? "Resume" : "Pause"}
-              </button>
-              <button
-                className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
-                onClick={startPreview}
-              >
-                Refresh preview
-              </button>
-            </div>
-
-            {isFinalizing ? (
-              <p className="mt-4 text-xs text-slate-500">
-                Finalizing recording...
-              </p>
-            ) : null}
-
-            {recordingUrl ? (
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-                  After recording (recommended)
-                </p>
-                <p className="mt-2 text-xs text-slate-500">
-                  Recommended: upload or share the recording to reach students.
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <a
-                    href={recordingUrl}
-                    download={recordedFile?.name || "live-session.webm"}
-                    className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700"
-                  >
-                    Download recording
-                  </a>
-                  <button
-                    className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
-                    onClick={handleUploadRecording}
-                    disabled={isUploading}
-                  >
-                    {isUploading ? "Uploading..." : "Upload recording"}
-                  </button>
-                  <button
-                    className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
-                    onClick={handleDeviceShare}
-                    disabled={!recordedFile}
-                  >
-                    Share via device
-                  </button>
-                </div>
-
-                {uploadError ? (
-                  <p className="mt-2 text-xs text-rose-500">{uploadError}</p>
-                ) : null}
-
-                {shareUrl ? (
-                  <div className="mt-4">
-                    <p className="text-xs font-semibold text-slate-600">
-                      Share link
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-3">
-                      <input
-                        readOnly
-                        value={shareUrl}
-                        className="w-full flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600"
-                      />
-                      <button
-                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
-                        onClick={handleCopyLink}
-                      >
-                        Copy link
-                      </button>
-                    </div>
-                    {copyStatus ? (
-                      <p className="mt-2 text-xs text-slate-500">
-                        {copyStatus}
-                      </p>
-                    ) : null}
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <a
-                        href={`https://wa.me/?text=${encodeURIComponent(
-                          `Live session recording from GoDomain Teacher. ${shareUrl}`
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700"
-                      >
-                        WhatsApp
-                      </a>
-                      <a
-                        href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
-                          "Live session recording from GoDomain Teacher."
-                        )}&url=${encodeURIComponent(shareUrl)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
-                      >
-                        X
-                      </a>
-                      <a
-                        href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
-                          shareUrl
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
-                      >
-                        Facebook
-                      </a>
-                      <a
-                        href={`https://t.me/share/url?url=${encodeURIComponent(
-                          shareUrl
-                        )}&text=${encodeURIComponent(
-                          "Live session recording from GoDomain Teacher."
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
-                      >
-                        Telegram
-                      </a>
-                      <a
-                        href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
-                          shareUrl
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
-                      >
-                        LinkedIn
-                      </a>
-                      <button
-                        className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
-                        onClick={handleInstagramShare}
-                      >
-                        Instagram
-                      </button>
-                    </div>
-                    <p className="mt-2 text-[11px] text-slate-400">
-                      Instagram web does not support direct link sharing. The
-                      button copies the link and opens Instagram.
-                    </p>
-                  </div>
-                ) : (
-                  <p className="mt-3 text-xs text-slate-500">
-                    Upload to generate a shareable link.
-                  </p>
-                )}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

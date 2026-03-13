@@ -19,8 +19,31 @@ const spaceGrotesk = Space_Grotesk({
 const STORAGE_KEY = "goTeachContentUploads";
 const STORAGE_PLAN_KEY = "goTeachStoragePlan";
 const STUDENT_STORAGE_KEY = "goTeachCustomStudents";
-const BASE_STORAGE_BYTES = 50 * 1024 * 1024;
-const UPGRADED_STORAGE_BYTES = 1024 * 1024 * 1024;
+const MB = 1024 * 1024;
+const GB = 1024 * MB;
+const STORAGE_PLANS = [
+  {
+    id: "free",
+    label: "Free",
+    bytes: 50 * MB,
+    detail: "50 MB storage · Unlimited uploads",
+    price: "KES 0",
+  },
+  {
+    id: "pro-5gb",
+    label: "Plus 5 GB",
+    bytes: 5 * GB,
+    detail: "5 GB storage · Unlimited uploads",
+    price: "KES 500",
+  },
+  {
+    id: "pro-10gb",
+    label: "Pro 10 GB",
+    bytes: 10 * GB,
+    detail: "10 GB storage · Unlimited uploads",
+    price: "KES 1,000",
+  },
+];
 
 const libraryCards = [
   {
@@ -173,7 +196,7 @@ export default function ContentDashboardPage() {
   const [uploadError, setUploadError] = useState("");
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [selectedForRemoval, setSelectedForRemoval] = useState([]);
-  const [isUpgraded, setIsUpgraded] = useState(false);
+  const [planId, setPlanId] = useState("free");
   const [studentQuery, setStudentQuery] = useState("");
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [customStudentName, setCustomStudentName] = useState("");
@@ -220,8 +243,13 @@ export default function ContentDashboardPage() {
 
   useEffect(() => {
     const storedPlan = localStorage.getItem(STORAGE_PLAN_KEY);
+    if (!storedPlan) return;
     if (storedPlan === "upgraded") {
-      setIsUpgraded(true);
+      setPlanId("pro-5gb");
+      return;
+    }
+    if (STORAGE_PLANS.some((plan) => plan.id === storedPlan)) {
+      setPlanId(storedPlan);
     }
   }, []);
 
@@ -239,9 +267,9 @@ export default function ContentDashboardPage() {
   useEffect(() => {
     localStorage.setItem(
       STORAGE_PLAN_KEY,
-      isUpgraded ? "upgraded" : "free",
+      planId,
     );
-  }, [isUpgraded]);
+  }, [planId]);
 
   useEffect(() => {
     setSelectedResourceIds((prev) =>
@@ -253,9 +281,9 @@ export default function ContentDashboardPage() {
     setShareStatus("");
   }, [selectedStudentIds, selectedResourceIds]);
 
-  const storageLimitBytes = isUpgraded
-    ? UPGRADED_STORAGE_BYTES
-    : BASE_STORAGE_BYTES;
+  const currentPlan =
+    STORAGE_PLANS.find((plan) => plan.id === planId) || STORAGE_PLANS[0];
+  const storageLimitBytes = currentPlan.bytes;
   const usedBytes = uploads.reduce(
     (total, item) => total + (item.sizeBytes || 0),
     0,
@@ -274,9 +302,9 @@ export default function ContentDashboardPage() {
     const incomingBytes = files.reduce((total, file) => total + file.size, 0);
     if (usedBytes + incomingBytes > storageLimitBytes) {
       setUploadError(
-        `Storage limit reached. ${formatBytes(
+        `Storage limit reached for ${currentPlan.label}. ${formatBytes(
           remainingBytes,
-        )} free. Upgrade to add more.`,
+        )} free. Upgrade for more storage.`,
       );
       return;
     }
@@ -306,8 +334,8 @@ export default function ContentDashboardPage() {
     setSelectedForRemoval([]);
   };
 
-  const handlePlanToggle = () => {
-    setIsUpgraded((prev) => !prev);
+  const handlePlanChange = (nextPlanId) => {
+    setPlanId(nextPlanId);
     setUploadError("");
   };
 
@@ -743,8 +771,8 @@ export default function ContentDashboardPage() {
               </p>
               {overLimitBytes > 0 ? (
                 <p className="mt-2 text-xs font-semibold text-rose-300">
-                  Over limit by {formatBytes(overLimitBytes)}. Upgrade to add
-                  more.
+                  Over limit by {formatBytes(overLimitBytes)}. Upgrade to 5 GB
+                  or 10 GB for more storage.
                 </p>
               ) : (
                 <p className="mt-2 text-xs text-slate-300">
@@ -770,9 +798,12 @@ export default function ContentDashboardPage() {
                   Manage storage
                 </p>
                 <h3 className="mt-2 text-lg font-semibold text-slate-900">
-                  {isUpgraded ? "Upgraded plan" : "Free plan"} ·{" "}
-                  {formatBytes(storageLimitBytes)} total
+                  {currentPlan.label} plan · {formatBytes(storageLimitBytes)}{" "}
+                  total
                 </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  {currentPlan.detail} · {currentPlan.price}
+                </p>
               </div>
               <button
                 className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500"
@@ -788,19 +819,51 @@ export default function ContentDashboardPage() {
                   Used {formatBytes(usedBytes)} · Remaining{" "}
                   {formatBytes(remainingBytes)}
                 </div>
-                <button
-                  className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600"
-                  onClick={handlePlanToggle}
-                >
-                  {isUpgraded ? "Downgrade plan" : "Upgrade package"}
-                </button>
+                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-500">
+                  Unlimited uploads
+                </span>
               </div>
               {overLimitBytes > 0 && (
                 <p className="mt-2 text-xs font-semibold text-rose-500">
-                  You are over by {formatBytes(overLimitBytes)}. Upgrade or
-                  remove files.
+                  You are over by {formatBytes(overLimitBytes)}. Upgrade to a
+                  larger pack or remove files.
                 </p>
               )}
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {STORAGE_PLANS.map((plan) => {
+                const isCurrent = plan.id === planId;
+                return (
+                  <button
+                    key={plan.id}
+                    className={`rounded-2xl border px-3 py-3 text-left text-xs transition ${
+                      isCurrent
+                        ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-indigo-200"
+                    }`}
+                    onClick={() => handlePlanChange(plan.id)}
+                    type="button"
+                  >
+                    <p className="text-sm font-semibold">{plan.label}</p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {plan.detail}
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold text-slate-700">
+                      {plan.price}
+                    </p>
+                    <span
+                      className={`mt-2 inline-block rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                        isCurrent
+                          ? "bg-indigo-100 text-indigo-700"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {isCurrent ? "Current" : "Select"}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
             <div className="mt-5">
