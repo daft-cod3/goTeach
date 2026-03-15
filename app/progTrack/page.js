@@ -87,7 +87,7 @@ export default function ProgressTrackingPage() {
           </div>
         </header>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 responsive-cols">
           {[
             {
               label: "Average quiz score",
@@ -143,7 +143,7 @@ export default function ProgressTrackingPage() {
           </button>
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-2">
+        <section className="grid gap-6 responsive-cols">
           {students.map((student) => (
             <StudCard key={student.id} {...student} />
           ))}

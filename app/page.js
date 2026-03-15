@@ -357,7 +357,7 @@ export default function Home() {
     <div
       className={`${dmSans.className} ${spaceGrotesk.variable} min-h-screen bg-[radial-gradient(circle_at_top,_#f2ecff_0%,_#f7f2ff_35%,_#fef8f3_70%,_#ffffff_100%)] text-slate-900`}
     >
-      <div className="relative flex min-h-screen w-full gap-6 px-6 py-8 lg:px-10">
+      <div className="relative responsive-shell min-h-screen w-full px-6 py-8 lg:px-10">
         <aside className="hidden w-60 flex-col gap-6 rounded-[28px] bg-white/80 p-6 shadow-[0_18px_60px_-30px_rgba(40,26,90,0.35)] backdrop-blur lg:flex">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-400 via-orange-300 to-amber-200 text-white shadow-md">
@@ -374,7 +374,7 @@ export default function Home() {
             { label: "Dashboard", href: "/" },
             { label: "Students", href: "/students" },
             { label: "Progress Tracking", href: "/progTrack" },
-            { label: "Assessments", href: "/assessments" },
+            { label: "Leaderboard", href: "/assessments" },
             { label: "Live Sessions", href: "/live" },
             { label: "Attendance", href: "/attendance" },
             { label: "Content Hub", href: "/content" },
@@ -488,7 +488,7 @@ export default function Home() {
                 <div className="absolute -bottom-8 right-16 h-20 w-20 rounded-full bg-white/10" />
               </div>
 
-              <div className="grid gap-6 md:grid-cols-2">
+              <div className="grid gap-6 responsive-cols">
                 <div className="rounded-[28px] bg-white/90 p-6 shadow-[0_20px_55px_-45px_rgba(30,22,70,0.5)]">
                   <div className="flex items-center justify-between">
                     <div>
@@ -613,7 +613,7 @@ export default function Home() {
                     {contentUploadError}
                   </p>
                 )}
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <div className="mt-6 grid gap-4 responsive-cols">
                   {hubCards.map((item) => (
                     <div
                       key={item.title}

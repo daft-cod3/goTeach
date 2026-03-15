@@ -471,7 +471,7 @@ export default function ContentDashboardPage() {
           </div>
         </header>
 
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-4 responsive-cols">
           {metrics.map((metric) => (
             <div
               key={metric.label}
@@ -490,7 +490,7 @@ export default function ContentDashboardPage() {
 
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="flex flex-col gap-6">
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 responsive-cols">
               {libraryCards.map((card) => {
                 const detail = (() => {
                   if (card.kind === "recorded") {
@@ -831,7 +831,7 @@ export default function ContentDashboardPage() {
               )}
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="mt-4 grid gap-3 responsive-cols">
               {STORAGE_PLANS.map((plan) => {
                 const isCurrent = plan.id === planId;
                 return (
